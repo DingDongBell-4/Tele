@@ -3,8 +3,8 @@ name: 📮 Post Telegram Quizzes
 # Trigger on schedule (every day at 10 AM UTC)
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 10 AM UTC daily
-    - cron: '0 20 * * *'
+    - cron: '0 10 * * *'  # 10 AM UTC daily
+  
   # Also trigger when quiz file is updated
   push:
     paths:
@@ -59,7 +59,6 @@ jobs:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SCHEDULE_TIME: ${{ github.event.inputs.schedule_time || '10:00' }}
-          DELAY_MINUTES: ${{ github.event.inputs.delay_minutes || '1' }}
           RANDOM_QUESTIONS: ${{ github.event.inputs.random_questions || '' }}
           RANDOM_SEED: ${{ github.event.inputs.seed || '' }}
         run: |
@@ -77,7 +76,6 @@ jobs:
               bot_token = os.getenv('BOT_TOKEN')
               chat_id = int(os.getenv('CHAT_ID'))
               schedule_time = os.getenv('SCHEDULE_TIME', '10:00')
-              delay_minutes = int(os.getenv('DELAY_MINUTES', '1'))
               random_str = os.getenv('RANDOM_QUESTIONS', '')
               seed_str = os.getenv('RANDOM_SEED', '')
               
@@ -122,15 +120,11 @@ jobs:
               print(f"⏰ Start time: {start_time}")
               print(f"👥 Chat ID: {chat_id}")
               
-              # Schedule quizzes
+              # Schedule quizzes (1-minute delay is hardcoded)
               await scheduler.schedule_quizzes(
                   quizzes=quizzes,
                   chat_ids=[chat_id],
                   start_time=start_time,
-                  delay_minutes=delay_minutes,
-                  explanation="",
-                  is_anonymous=True,
-                  open_period=30,
                   random_count=random_count,
                   random_seed=random_seed
               )

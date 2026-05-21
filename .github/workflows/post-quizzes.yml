@@ -3,8 +3,8 @@ name: 📮 Post Telegram Quizzes
 # Trigger on schedule (every day at 10 AM UTC)
 on:
   schedule:
-    - cron: '0 10 * * *'  # 10 AM UTC daily
-  
+    - cron: '0 */6 * * *'  # 10 AM UTC daily
+    - cron: '0 20 * * *'
   # Also trigger when quiz file is updated
   push:
     paths:

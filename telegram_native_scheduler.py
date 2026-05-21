@@ -129,10 +129,6 @@ class TelegramNativeScheduler:
         quizzes: List[Dict],
         chat_ids: List[int],
         start_time: datetime,
-        delay_minutes: int,
-        explanation: str = "",
-        is_anonymous: bool = True,
-        open_period: int = 30,
         random_count: int = None,
         random_seed: int = None
     ):
@@ -142,13 +138,11 @@ class TelegramNativeScheduler:
             quizzes: List of quiz questions
             chat_ids: Target chat IDs
             start_time: When to start sending
-            delay_minutes: Delay between quizzes
-            explanation: Common explanation
-            is_anonymous: Anonymous voting
-            open_period: Auto-close time
             random_count: Number of random questions to select (None = all)
             random_seed: Seed for random selection (None = use current time)
         """
+        
+        delay_minutes = 1  # Fixed 1-minute delay
         
         # Select random questions if specified
         if random_count and random_count < len(quizzes):
@@ -160,9 +154,9 @@ class TelegramNativeScheduler:
             print(f"\n🎲 Random Selection: Picked {len(quizzes)} questions randomly")
             print(f"📌 Questions selected: {[q['number'] for q in quizzes]}")
         
-        print(f"\n⏰ Using Telegram Native Scheduling")
+        print(f"\n⏰ Scheduling Quizzes")
         print(f"📅 Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"⏱️  Delay: {delay_minutes} minute(s) between quizzes")
+        print(f"⏱️  Delay: {delay_minutes} minute between quizzes")
         print(f"👥 Target groups: {len(chat_ids)}")
         print(f"📊 Total quizzes: {len(quizzes)}")
         print("─" * 50)
@@ -181,22 +175,15 @@ class TelegramNativeScheduler:
                 # Send to all groups
                 for chat_id in chat_ids:
                     try:
-                        # Prepare the poll data
+                        # Prepare the poll data - no anonymous, no open_period
                         payload = {
                             'chat_id': chat_id,
                             'question': quiz['question'],
                             'options': quiz['options'],
                             'type': 'quiz',
                             'correct_option_id': quiz['correct_option_id'],
-                            'is_anonymous': is_anonymous,
+                            'is_anonymous': False,
                         }
-                        
-                        # Add optional fields
-                        if explanation:
-                            payload['explanation'] = explanation[:200]
-                        
-                        if open_period >= 5:
-                            payload['open_period'] = open_period
                         
                         # Send to Telegram
                         response = await client.post(
@@ -222,7 +209,7 @@ class TelegramNativeScheduler:
         
         print("─" * 50)
         print("🎉 All quizzes have been sent!")
-        print("📱 Check 'Scheduled Messages' in your Telegram groups")
+        print("📱 Check your Telegram groups to view quizzes")
 
 
 async def main():
@@ -232,7 +219,7 @@ async def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage
+  # Basic usage - post all questions
   python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --time "2024-05-20 10:00"
   
   # Random 5 questions
@@ -241,11 +228,11 @@ Examples:
   # Random 3 questions with seed (reproducible)
   python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --time "10:00" --random 3 --seed 42
   
-  # Multiple groups with random questions
-  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --chat 987654321 --time "10:00" --random 5 --delay 2
+  # Multiple groups
+  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --chat 987654321 --time "10:00"
   
-  # With explanation
-  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --time "10:30" --explanation "Check the answer" --random 10
+  # Multiple groups with random 5 questions
+  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --chat 987654321 --time "10:00" --random 5
         """
     )
     
@@ -253,10 +240,6 @@ Examples:
     parser.add_argument('--file', required=True, help='DOCX file with quizzes')
     parser.add_argument('--chat', type=int, action='append', required=True, dest='chats', help='Chat ID (can be used multiple times)')
     parser.add_argument('--time', required=True, help='Start time (format: YYYY-MM-DD HH:MM or "HH:MM" for today)')
-    parser.add_argument('--delay', type=int, default=1, help='Delay in minutes between quizzes (default: 1)')
-    parser.add_argument('--explanation', default='', help='Common explanation for wrong answers')
-    parser.add_argument('--anonymous', action='store_true', default=True, help='Anonymous voting (default: True)')
-    parser.add_argument('--open-period', type=int, default=30, help='Auto-close poll after N seconds (default: 30)')
     parser.add_argument('--random', type=int, help='Select random N questions from document')
     parser.add_argument('--seed', type=int, help='Seed for random selection (for reproducibility)')
     
@@ -296,10 +279,6 @@ Examples:
         quizzes=quizzes,
         chat_ids=args.chats,
         start_time=start_time,
-        delay_minutes=args.delay,
-        explanation=args.explanation,
-        is_anonymous=args.anonymous,
-        open_period=args.open_period,
         random_count=args.random,
         random_seed=args.seed
     )

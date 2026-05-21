@@ -4,7 +4,9 @@ name: 📮 Post Telegram Quizzes
 on:
   schedule:
     - cron: '0 10 * * *'  # 10 AM UTC daily
-  
+    - cron: '0 11 * * *'
+    - cron: '0 12 * * *'
+    - cron: '0 */6 * * *'
   # Also trigger when quiz file is updated
   push:
     paths:
@@ -21,7 +23,7 @@ on:
       random_questions:
         description: 'Select random N questions (leave empty for all)'
         required: false
-        default: ''
+        default: '50'
       seed:
         description: 'Random seed for reproducibility (optional)'
         required: false

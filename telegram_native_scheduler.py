@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Telegram Quiz Scheduler - Native Telegram Scheduling
-Schedules quizzes directly in Telegram's scheduled messages using Unix timestamps
+Telegram Quiz Scheduler - Fixed with proper delays between polls
+Posts 30 random questions every 2 hours with 1-minute delay between each poll
 """
 
 import os
-import json
 import asyncio
 import re
 import random
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict
 import argparse
@@ -48,7 +48,7 @@ class TelegramNativeScheduler:
             else:
                 skipped += 1
         
-        print(f"📋 Valid quizzes: {len(quizzes)}, Skipped: {skipped}")
+        print(f"📋 Valid quizzes: {len(quizzes)}, Skipped: {skipped}\n")
         return quizzes
     
     def _parse_quiz_block(self, block: str, question_num: int) -> Dict or None:
@@ -60,24 +60,20 @@ class TelegramNativeScheduler:
         # Extract question
         question_match = re.match(r'([\s\S]*?)(?=\([a-d]\))', clean_block, re.IGNORECASE)
         if not question_match:
-            print(f"⏭️  Q{question_num}: Skipped - No question found")
             return None
         
         question = question_match.group(1).strip()
         
         # Check for LaTeX
         if re.search(r'\$[\s\S]*?\$|\\[\w\{\}]+', block):
-            print(f"⏭️  Q{question_num}: Skipped - LaTeX code detected")
             return None
         
         # Check for tables
         if re.search(r'^\s*\|[\s\S]*\|', clean_block, re.MULTILINE):
-            print(f"⏭️  Q{question_num}: Skipped - Table format detected")
             return None
         
         # Check for images
         if re.search(r'\[img\]|<img|\.jpg|\.png|\.gif|\.bmp|image:', block, re.IGNORECASE):
-            print(f"⏭️  Q{question_num}: Skipped - Image reference detected")
             return None
         
         # Extract options
@@ -91,30 +87,21 @@ class TelegramNativeScheduler:
         # Extract answer
         answer_match = re.search(r'Ans:\s*([a-d])', block, re.IGNORECASE)
         if not answer_match:
-            print(f"⏭️  Q{question_num}: Skipped - No answer found")
             return None
         
         correct_idx = ord(answer_match.group(1).lower()) - ord('a')
         
         # Validation
-        if len(options) < 2:
-            print(f"⏭️  Q{question_num}: Skipped - Less than 2 options")
-            return None
-        
-        if len(options) > 10:
-            print(f"⏭️  Q{question_num}: Skipped - More than 10 options")
+        if len(options) < 2 or len(options) > 10:
             return None
         
         if len(question) > 300:
-            print(f"⏭️  Q{question_num}: Skipped - Question too long ({len(question)} chars)")
             return None
         
         if correct_idx >= len(options):
-            print(f"⏭️  Q{question_num}: Skipped - Answer index invalid")
             return None
         
         if any(len(opt) > 100 for opt in options):
-            print(f"⏭️  Q{question_num}: Skipped - Option too long")
             return None
         
         return {
@@ -124,142 +111,109 @@ class TelegramNativeScheduler:
             'correct_option_id': correct_idx
         }
     
-    async def schedule_quizzes(
-        self,
-        quizzes: List[Dict],
-        chat_ids: List[int],
-        start_time: datetime,
-        random_count: int = None,
-        random_seed: int = None
-    ):
-        """Schedule quizzes using Telegram's native scheduling feature
+    async def send_poll(self, client: httpx.AsyncClient, chat_id: int, quiz: Dict) -> bool:
+        """Send a single poll to a chat"""
+        try:
+            payload = {
+                'chat_id': chat_id,
+                'question': quiz['question'],
+                'options': quiz['options'],
+                'type': 'quiz',
+                'correct_option_id': quiz['correct_option_id'],
+                'is_anonymous': False,
+            }
+            
+            response = await client.post(
+                f"{self.base_url}/sendPoll",
+                json=payload,
+                timeout=30.0
+            )
+            
+            result = response.json()
+            return result.get('ok', False)
         
-        Args:
-            quizzes: List of quiz questions
-            chat_ids: Target chat IDs
-            start_time: When to start sending
-            random_count: Number of random questions to select (None = all)
-            random_seed: Seed for random selection (None = use current time)
+        except Exception as e:
+            print(f"Error sending poll: {str(e)}")
+            return False
+    
+    async def post_30_questions(self, quizzes: List[Dict], chat_ids: List[int], random_seed: int = None):
+        """Post 30 random questions with 1-minute delay between each
+        
+        Delay strategy:
+        - Real delay: await asyncio.sleep(60) between each poll
+        - This ensures 1 minute between consecutive messages
         """
         
-        delay_minutes = 1  # Fixed 1-minute delay
+        # Select 30 random questions
+        if random_seed is not None:
+            random.seed(random_seed)
         
-        # Select random questions if specified
-        if random_count and random_count < len(quizzes):
-            if random_seed is not None:
-                random.seed(random_seed)
-            
-            quizzes = random.sample(quizzes, min(random_count, len(quizzes)))
-            quizzes = sorted(quizzes, key=lambda x: x['number'])  # Keep original order
-            print(f"\n🎲 Random Selection: Picked {len(quizzes)} questions randomly")
-            print(f"📌 Questions selected: {[q['number'] for q in quizzes]}")
+        selected_quizzes = random.sample(quizzes, min(30, len(quizzes)))
+        selected_quizzes = sorted(selected_quizzes, key=lambda x: x['number'])
         
-        print(f"\n⏰ Scheduling Quizzes")
-        print(f"📅 Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"⏱️  Delay: {delay_minutes} minute between quizzes")
-        print(f"👥 Target groups: {len(chat_ids)}")
-        print(f"📊 Total quizzes: {len(quizzes)}")
-        print("─" * 50)
+        print(f"🎲 RANDOM SELECTION: {len(selected_quizzes)} questions")
+        print(f"📌 Questions: {[q['number'] for q in selected_quizzes[:15]]}...")
+        print(f"⏱️  Delay: 1 minute between each poll")
+        print(f"👥 Groups: {len(chat_ids)}")
+        print("─" * 60)
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Schedule each quiz
-            for idx, quiz in enumerate(quizzes):
-                # Calculate send time for this quiz
-                send_time = start_time + timedelta(minutes=idx * delay_minutes)
-                
-                # Convert to Unix timestamp (Telegram requirement)
-                unix_timestamp = int(send_time.timestamp())
-                
-                current_unix = int(datetime.now().timestamp())
+        async with httpx.AsyncClient() as client:
+            for idx, quiz in enumerate(selected_quizzes):
+                print(f"\n[{idx+1}/{len(selected_quizzes)}] Sending Q{quiz['number']}...")
                 
                 # Send to all groups
                 for chat_id in chat_ids:
-                    try:
-                        # Prepare the poll data - no anonymous, no open_period
-                        payload = {
-                            'chat_id': chat_id,
-                            'question': quiz['question'],
-                            'options': quiz['options'],
-                            'type': 'quiz',
-                            'correct_option_id': quiz['correct_option_id'],
-                            'is_anonymous': False,
-                        }
-                        
-                        # Send to Telegram
-                        response = await client.post(
-                            f"{self.base_url}/sendPoll",
-                            json=payload
-                        )
-                        
-                        result = response.json()
-                        
-                        if result.get('ok'):
-                            if unix_timestamp > current_unix:
-                                print(f"✅ Q{quiz['number']} → {chat_id}: Scheduled for {send_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                            else:
-                                print(f"✅ Q{quiz['number']} → {chat_id}: Sent immediately")
-                        else:
-                            print(f"❌ Q{quiz['number']} → {chat_id}: {result.get('description', 'Unknown error')}")
-                    
-                    except Exception as e:
-                        print(f"❌ Q{quiz['number']} → {chat_id}: {str(e)}")
+                    success = await self.send_poll(client, chat_id, quiz)
+                    status = "✅ Sent" if success else "❌ Failed"
+                    print(f"  {status} to chat {chat_id}")
                 
-                # Small delay between API calls
-                await asyncio.sleep(0.5)
+                # Wait 60 seconds (1 minute) before next poll
+                if idx < len(selected_quizzes) - 1:
+                    print(f"  ⏳ Waiting 60 seconds before next poll...")
+                    # Show countdown every 10 seconds
+                    for remaining in range(60, 0, -10):
+                        await asyncio.sleep(10)
+                        if remaining > 10:
+                            print(f"     {remaining-10}s remaining...")
+                    # Final second
+                    await asyncio.sleep(0)
         
-        print("─" * 50)
-        print("🎉 All quizzes have been sent!")
-        print("📱 Check your Telegram groups to view quizzes")
+        print("\n" + "─" * 60)
+        print("✅ COMPLETE: All 30 questions posted!")
+        print(f"⏰ Total time: ~{len(selected_quizzes)-1} minutes")
+        print("📱 Check your Telegram groups\n")
 
 
 async def main():
-    """Main function"""
+    """Main function - posts every 2 hours"""
     parser = argparse.ArgumentParser(
-        description='Schedule Telegram quizzes using native Telegram scheduling',
+        description='Post 30 random Telegram quizzes every 2 hours',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage - post all questions
-  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --time "2024-05-20 10:00"
+  # Post 30 random questions now
+  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789
   
-  # Random 5 questions
-  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --time "10:00" --random 5
-  
-  # Random 3 questions with seed (reproducible)
-  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --time "10:00" --random 3 --seed 42
+  # With reproducible seed
+  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --seed 42
   
   # Multiple groups
-  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --chat 987654321 --time "10:00"
+  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --chat 987654321
   
-  # Multiple groups with random 5 questions
-  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --chat 987654321 --time "10:00" --random 5
+  # Keep running and post every 2 hours
+  python telegram_native_scheduler.py --token YOUR_BOT_TOKEN --file quiz.docx --chat 123456789 --loop
         """
     )
     
     parser.add_argument('--token', required=True, help='Telegram Bot Token')
     parser.add_argument('--file', required=True, help='DOCX file with quizzes')
-    parser.add_argument('--chat', type=int, action='append', required=True, dest='chats', help='Chat ID (can be used multiple times)')
-    parser.add_argument('--time', required=True, help='Start time (format: YYYY-MM-DD HH:MM or "HH:MM" for today)')
-    parser.add_argument('--random', type=int, help='Select random N questions from document')
-    parser.add_argument('--seed', type=int, help='Seed for random selection (for reproducibility)')
+    parser.add_argument('--chat', type=int, action='append', required=True, dest='chats', help='Chat ID')
+    parser.add_argument('--seed', type=int, help='Random seed (optional)')
+    parser.add_argument('--loop', action='store_true', help='Post every 2 hours indefinitely')
     
     args = parser.parse_args()
     
-    # Parse time
-    try:
-        if ' ' in args.time:
-            # Full datetime provided
-            start_time = datetime.strptime(args.time, '%Y-%m-%d %H:%M')
-        else:
-            # Only time provided, use today
-            today = datetime.now().date()
-            time_part = datetime.strptime(args.time, '%H:%M').time()
-            start_time = datetime.combine(today, time_part)
-    except ValueError:
-        print("❌ Invalid time format. Use 'YYYY-MM-DD HH:MM' or 'HH:MM'")
-        return
-    
-    # Validate file exists
+    # Validate file
     if not os.path.exists(args.file):
         print(f"❌ File not found: {args.file}")
         return
@@ -267,25 +221,39 @@ Examples:
     # Initialize scheduler
     scheduler = TelegramNativeScheduler(args.token)
     
-    # Extract quizzes
+    # Extract quizzes once
     quizzes = await scheduler.extract_quizzes_from_docx(args.file)
     
     if not quizzes:
         print("❌ No valid quizzes found")
         return
     
-    # Schedule quizzes
-    await scheduler.schedule_quizzes(
-        quizzes=quizzes,
-        chat_ids=args.chats,
-        start_time=start_time,
-        random_count=args.random,
-        random_seed=args.seed
-    )
+    if len(quizzes) < 30:
+        print(f"⚠️  Warning: Only {len(quizzes)} questions available (need 30)")
+    
+    # Run once or loop
+    if args.loop:
+        print(f"🔄 Running every 2 hours (press Ctrl+C to stop)\n")
+        counter = 1
+        while True:
+            print(f"\n{'='*60}")
+            print(f"📅 Session {counter} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"{'='*60}")
+            
+            await scheduler.post_30_questions(quizzes, args.chats, args.seed)
+            
+            print(f"⏰ Next session in 2 hours...")
+            counter += 1
+            
+            # Wait 2 hours (7200 seconds)
+            await asyncio.sleep(7200)
+    else:
+        # Run once
+        await scheduler.post_30_questions(quizzes, args.chats, args.seed)
 
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n⚠️  Scheduler stopped by user")
+        print("\n\n⚠️  Stopped by user")

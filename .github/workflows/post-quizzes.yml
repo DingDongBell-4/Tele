@@ -22,6 +22,14 @@ on:
         description: 'Delay between quizzes (minutes)'
         required: true
         default: '1'
+      random_questions:
+        description: 'Select random N questions (leave empty for all)'
+        required: false
+        default: ''
+      seed:
+        description: 'Random seed for reproducibility (optional)'
+        required: false
+        default: ''
 
 jobs:
   post-quizzes:
@@ -56,6 +64,8 @@ jobs:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SCHEDULE_TIME: ${{ github.event.inputs.schedule_time || '10:00' }}
           DELAY_MINUTES: ${{ github.event.inputs.delay_minutes || '1' }}
+          RANDOM_QUESTIONS: ${{ github.event.inputs.random_questions || '' }}
+          RANDOM_SEED: ${{ github.event.inputs.seed || '' }}
         run: |
           python - << 'EOF'
           import os
@@ -72,10 +82,28 @@ jobs:
               chat_id = int(os.getenv('CHAT_ID'))
               schedule_time = os.getenv('SCHEDULE_TIME', '10:00')
               delay_minutes = int(os.getenv('DELAY_MINUTES', '1'))
+              random_str = os.getenv('RANDOM_QUESTIONS', '')
+              seed_str = os.getenv('RANDOM_SEED', '')
               
               if not bot_token or not chat_id:
                   print("❌ Error: BOT_TOKEN or CHAT_ID not set in secrets!")
                   sys.exit(1)
+              
+              # Parse random count
+              random_count = None
+              if random_str and random_str.strip():
+                  try:
+                      random_count = int(random_str)
+                  except ValueError:
+                      print(f"⚠️  Invalid random count: {random_str}, using all questions")
+              
+              # Parse seed
+              random_seed = None
+              if seed_str and seed_str.strip():
+                  try:
+                      random_seed = int(seed_str)
+                  except ValueError:
+                      print(f"⚠️  Invalid seed: {seed_str}, using random seed")
               
               scheduler = TelegramNativeScheduler(bot_token)
               
@@ -91,7 +119,10 @@ jobs:
               time_obj = datetime.strptime(schedule_time, '%H:%M').time()
               start_time = datetime.combine(today, time_obj)
               
-              print(f"📅 Posting {len(quizzes)} quizzes")
+              print(f"📅 Posting quizzes")
+              print(f"📊 Total available: {len(quizzes)}")
+              if random_count:
+                  print(f"🎲 Selecting {random_count} random question(s)")
               print(f"⏰ Start time: {start_time}")
               print(f"👥 Chat ID: {chat_id}")
               
@@ -103,7 +134,9 @@ jobs:
                   delay_minutes=delay_minutes,
                   explanation="",
                   is_anonymous=True,
-                  open_period=30
+                  open_period=30,
+                  random_count=random_count,
+                  random_seed=random_seed
               )
           
           asyncio.run(main())

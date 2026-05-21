@@ -3,7 +3,7 @@ name: 📮 Post 30 Random Telegram Quizzes
 # Trigger every 2 hours
 on:
   schedule:
-    - cron: '0 */2 * * *'  # Every 2 hours
+    - cron: '37 */2 * * *'  # Every 2 hours
   
   # Also trigger when quiz file is updated
   push:

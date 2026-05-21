@@ -1,0 +1,118 @@
+name: 📮 Post Telegram Quizzes
+
+# Trigger on schedule (every day at 10 AM UTC)
+on:
+  schedule:
+    - cron: '0 10 * * *'  # 10 AM UTC daily
+  
+  # Also trigger when quiz file is updated
+  push:
+    paths:
+      - 'quizzes.docx'
+      - '.github/workflows/post-quizzes.yml'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      schedule_time:
+        description: 'When to post (HH:MM format, e.g., 10:00)'
+        required: true
+        default: '10:00'
+      delay_minutes:
+        description: 'Delay between quizzes (minutes)'
+        required: true
+        default: '1'
+
+jobs:
+  post-quizzes:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: 📦 Install dependencies
+        run: |
+          pip install python-telegram-bot httpx python-docx
+      
+      - name: 📄 Check if quiz file exists
+        id: check_file
+        run: |
+          if [ -f "quizzes.docx" ]; then
+            echo "file_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "file_exists=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🚀 Post quizzes to Telegram
+        if: steps.check_file.outputs.file_exists == 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SCHEDULE_TIME: ${{ github.event.inputs.schedule_time || '10:00' }}
+          DELAY_MINUTES: ${{ github.event.inputs.delay_minutes || '1' }}
+        run: |
+          python - << 'EOF'
+          import os
+          import sys
+          import asyncio
+          from datetime import datetime
+          
+          # Import the scheduler
+          sys.path.insert(0, '.')
+          from telegram_native_scheduler import TelegramNativeScheduler
+          
+          async def main():
+              bot_token = os.getenv('BOT_TOKEN')
+              chat_id = int(os.getenv('CHAT_ID'))
+              schedule_time = os.getenv('SCHEDULE_TIME', '10:00')
+              delay_minutes = int(os.getenv('DELAY_MINUTES', '1'))
+              
+              if not bot_token or not chat_id:
+                  print("❌ Error: BOT_TOKEN or CHAT_ID not set in secrets!")
+                  sys.exit(1)
+              
+              scheduler = TelegramNativeScheduler(bot_token)
+              
+              # Extract quizzes
+              quizzes = await scheduler.extract_quizzes_from_docx('quizzes.docx')
+              
+              if not quizzes:
+                  print("❌ No valid quizzes found!")
+                  sys.exit(1)
+              
+              # Get current date and use provided time
+              today = datetime.now().date()
+              time_obj = datetime.strptime(schedule_time, '%H:%M').time()
+              start_time = datetime.combine(today, time_obj)
+              
+              print(f"📅 Posting {len(quizzes)} quizzes")
+              print(f"⏰ Start time: {start_time}")
+              print(f"👥 Chat ID: {chat_id}")
+              
+              # Schedule quizzes
+              await scheduler.schedule_quizzes(
+                  quizzes=quizzes,
+                  chat_ids=[chat_id],
+                  start_time=start_time,
+                  delay_minutes=delay_minutes,
+                  explanation="",
+                  is_anonymous=True,
+                  open_period=30
+              )
+          
+          asyncio.run(main())
+          EOF
+      
+      - name: ✅ Success
+        if: success()
+        run: echo "🎉 Quizzes posted successfully!"
+      
+      - name: ❌ Failed
+        if: failure()
+        run: echo "⚠️ Failed to post quizzes. Check logs above."

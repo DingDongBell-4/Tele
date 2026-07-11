@@ -148,7 +148,7 @@ class TelegramNativeScheduler:
         if random_seed is not None:
             random.seed(random_seed)
         
-        selected_quizzes = random.sample(quizzes, min(30, len(quizzes)))
+        selected_quizzes = random.sample(quizzes, min(10, len(quizzes)))
         selected_quizzes = sorted(selected_quizzes, key=lambda x: x['number'])
         
         print(f"🎲 RANDOM SELECTION: {len(selected_quizzes)} questions")

@@ -1,16 +1,15 @@
-name: 📮 Post 30 Random Telegram Quizzes
+name: 📮 Post 30 Random Telegram Quizzes + Quote
 
 # Trigger every 2 hours
 on:
   schedule:
-    - cron: '37 0,3,6,9,12,15,18,19,20,21,22 * * *'  # Every 2 hours
-  
-  # Also trigger when quiz file is updated
+    - cron: '37 0,3,6,9,12,15,18,19,20,21,22 * * *' # Every 2 hours
+  # Also trigger when quiz or quote file is updated
   push:
     paths:
       - 'quizzes.docx'
+      - 'Quotes.docx'
       - '.github/workflows/post-quizzes.yml'
-  
   # Allow manual trigger
   workflow_dispatch:
     inputs:
@@ -22,20 +21,19 @@ on:
 jobs:
   post-quizzes:
     runs-on: ubuntu-latest
-    
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v3
-      
+        uses: actions/checkout@v4
+
       - name: 🐍 Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      
+
       - name: 📦 Install dependencies
         run: |
           pip install python-telegram-bot httpx python-docx
-      
+
       - name: 📄 Check if quiz file exists
         id: check_file
         run: |
@@ -44,31 +42,36 @@ jobs:
           else
             echo "file_exists=false" >> $GITHUB_OUTPUT
           fi
-      
-      - name: 🚀 Post 30 random quizzes to Telegram
+
+      - name: 🚀 Post random quizzes + a quote to Telegram
         if: steps.check_file.outputs.file_exists == 'true'
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          QUOTE_CHAT_ID: ${{ secrets.TELEGRAM_QUOTE_CHAT_ID }}
           RANDOM_SEED: ${{ github.event.inputs.seed || '' }}
         run: |
           python - << 'PYTHON_EOF'
           import os
           import sys
           import asyncio
-          
+
           sys.path.insert(0, '.')
           from telegram_native_scheduler import TelegramNativeScheduler
-          
+
           async def main():
               bot_token = os.getenv('BOT_TOKEN')
               chat_id = int(os.getenv('CHAT_ID'))
+              quote_chat_id_str = os.getenv('QUOTE_CHAT_ID', '')
               seed_str = os.getenv('RANDOM_SEED', '')
-              
+
               if not bot_token or not chat_id:
                   print("❌ Error: BOT_TOKEN or CHAT_ID not set!")
                   sys.exit(1)
-              
+
+              # Quote chat defaults to the same chat as quizzes if not set
+              quote_chat_id = int(quote_chat_id_str) if quote_chat_id_str.strip() else chat_id
+
               # Parse seed
               random_seed = None
               if seed_str and seed_str.strip():
@@ -76,33 +79,41 @@ jobs:
                       random_seed = int(seed_str)
                   except ValueError:
                       pass
-              
+
               scheduler = TelegramNativeScheduler(bot_token)
-              
+
               # Extract quizzes
               quizzes = await scheduler.extract_quizzes_from_docx('quizzes.docx')
-              
               if not quizzes:
                   print("❌ No valid quizzes found!")
                   sys.exit(1)
-              
+
+              # Extract quotes (optional — skipped if file missing)
+              quotes = []
+              if os.path.exists('Quotes.docx'):
+                  quotes = await scheduler.extract_quotes_from_docx('Quotes.docx')
+              else:
+                  print("⚠️  Quotes.docx not found — skipping quote for this session")
+
               print(f"📊 Total questions available: {len(quizzes)}")
               print(f"🎲 Selecting 30 random questions...")
-              
-              # Post 30 random questions with 1-minute delay
-              await scheduler.post_30_questions(
+
+              await scheduler.post_session(
                   quizzes=quizzes,
+                  quotes=quotes,
                   chat_ids=[chat_id],
+                  quote_chat_ids=[quote_chat_id],
+                  num_questions=30,
                   random_seed=random_seed
               )
-          
+
           asyncio.run(main())
           PYTHON_EOF
-      
+
       - name: ✅ Success
         if: success()
-        run: echo "🎉 30 quizzes posted successfully!"
-      
+        run: echo "🎉 Quizzes + quote posted successfully!"
+
       - name: ❌ Failed
         if: failure()
-        run: echo "⚠️ Failed to post quizzes. Check logs above."
+        run: echo "⚠️ Failed to post. Check logs above."

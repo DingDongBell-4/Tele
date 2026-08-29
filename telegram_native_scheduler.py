@@ -156,7 +156,10 @@ class TelegramNativeScheduler:
                 'options': quiz['options'],
                 'type': 'quiz',
                 'correct_option_id': quiz['correct_option_id'],
-                'is_anonymous': False,
+                # Telegram does NOT allow non-anonymous polls in channels
+                # (only in groups/supergroups). Channels require
+                # is_anonymous=True or sendPoll fails outright.
+                'is_anonymous': True,
             }
 
             response = await client.post(
@@ -166,7 +169,11 @@ class TelegramNativeScheduler:
             )
 
             result = response.json()
-            return result.get('ok', False)
+            ok = result.get('ok', False)
+            if not ok:
+                # Surface the real Telegram error instead of failing silently
+                print(f"    ↳ Telegram error: {result.get('description', result)}")
+            return ok
 
         except Exception as e:
             print(f"Error sending poll: {str(e)}")
@@ -187,7 +194,10 @@ class TelegramNativeScheduler:
             )
 
             result = response.json()
-            return result.get('ok', False)
+            ok = result.get('ok', False)
+            if not ok:
+                print(f"    ↳ Telegram error: {result.get('description', result)}")
+            return ok
 
         except Exception as e:
             print(f"Error sending message: {str(e)}")

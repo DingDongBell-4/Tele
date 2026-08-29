@@ -1,0 +1,134 @@
+name: 📮 Post 30 Random GS Quiz Questions
+
+on:
+  schedule:
+    - cron: '37 11,18 * * *'  # Same 2-hour cadence as the original
+  push:
+    paths:
+      - 'GS_Quiz.docx'
+      - '.github/workflows/post-gs-quiz.yml'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Random seed for reproducibility (optional)'
+        required: false
+        default: ''
+
+jobs:
+  post-gs-quiz:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install python-telegram-bot httpx python-docx
+
+      - name: 📄 Check if quiz file exists
+        id: check_file
+        run: |
+          if [ -f "GS_Quiz.docx" ]; then
+            echo "file_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "file_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🚀 Post random GS quiz questions to Telegram
+        if: steps.check_file.outputs.file_exists == 'true'
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_GS_CHAT_ID }}
+          RANDOM_SEED: ${{ github.event.inputs.seed || '' }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python -u - << 'PYTHON_EOF'
+          import os
+          import sys
+          import asyncio
+          import traceback
+          sys.path.insert(0, '.')
+          from telegram_native_scheduler import TelegramNativeScheduler
+
+          async def main():
+              print("🔧 Starting GS Quiz posting job...", flush=True)
+
+              bot_token = os.getenv('BOT_TOKEN')
+              chat_id_str = os.getenv('CHAT_ID')
+              seed_str = os.getenv('RANDOM_SEED', '')
+
+              print(f"🔑 BOT_TOKEN set: {bool(bot_token)}", flush=True)
+              print(f"💬 CHAT_ID raw value present: {bool(chat_id_str)}", flush=True)
+
+              if not bot_token or not chat_id_str:
+                  print("❌ Error: BOT_TOKEN or CHAT_ID not set!", flush=True)
+                  sys.exit(1)
+
+              chat_id = int(chat_id_str)
+
+              random_seed = None
+              if seed_str and seed_str.strip():
+                  try:
+                      random_seed = int(seed_str)
+                  except ValueError:
+                      pass
+
+              scheduler = TelegramNativeScheduler(bot_token)
+
+              print("📂 Extracting quizzes from GS_Quiz.docx...", flush=True)
+              quizzes = await scheduler.extract_quizzes_from_docx('GS_Quiz.docx')
+              if not quizzes:
+                  print("❌ No valid quizzes found!", flush=True)
+                  sys.exit(1)
+
+              print(f"📊 Total questions available: {len(quizzes)}", flush=True)
+              print(f"🎲 Selecting 30 random questions...", flush=True)
+
+              # Sanity-check the bot/chat before the full session: send one
+              # test message first so failures show up immediately instead
+              # of 29 minutes into a silent loop.
+              import httpx
+              async with httpx.AsyncClient() as client:
+                  test_resp = await client.post(
+                      f"{scheduler.base_url}/getChat",
+                      json={"chat_id": chat_id},
+                      timeout=30.0
+                  )
+                  test_result = test_resp.json()
+                  print(f"🔍 getChat check: {test_result}", flush=True)
+                  if not test_result.get('ok'):
+                      print("❌ Bot cannot see this chat_id — check the bot is admin "
+                            "and the ID is correct.", flush=True)
+                      sys.exit(1)
+
+              # No quotes for this channel — quotes=[] means the quote step
+              # inside post_session is skipped automatically.
+              await scheduler.post_session(
+                  quizzes=quizzes,
+                  quotes=[],
+                  chat_ids=[chat_id],
+                  quote_chat_ids=[chat_id],
+                  num_questions=30,
+                  random_seed=random_seed
+              )
+
+          try:
+              asyncio.run(main())
+          except Exception:
+              print("💥 UNCAUGHT EXCEPTION:", flush=True)
+              traceback.print_exc()
+              sys.exit(1)
+          PYTHON_EOF
+
+      - name: ✅ Success
+        if: success()
+        run: echo "🎉 GS Quiz questions posted successfully!"
+
+      - name: ❌ Failed
+        if: failure()
+        run: echo "⚠️ Failed to post. Check logs above."

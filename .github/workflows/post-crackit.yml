@@ -5,8 +5,8 @@ on:
     - cron: '37 11,18 * * *'  # Same 2-hour cadence as the original
   push:
     paths:
-      - 'GS_Quiz.docx'
-      - '.github/workflows/post-gs-quiz.yml'
+      - 'quizzes.docx'
+      - '.github/workflows/post-crackit.yml'
   workflow_dispatch:
     inputs:
       seed:

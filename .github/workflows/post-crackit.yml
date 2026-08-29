@@ -1,4 +1,4 @@
-name: 📮 Post 30 Random GS Quiz Questions
+name: 📮 Post 30 Random Quiz on CrackIT Questions
 
 on:
   schedule:
@@ -33,7 +33,7 @@ jobs:
       - name: 📄 Check if quiz file exists
         id: check_file
         run: |
-          if [ -f "GS_Quiz.docx" ]; then
+          if [ -f "quizzes.docx" ]; then
             echo "file_exists=true" >> $GITHUB_OUTPUT
           else
             echo "file_exists=false" >> $GITHUB_OUTPUT
@@ -43,7 +43,7 @@ jobs:
         if: steps.check_file.outputs.file_exists == 'true'
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_GS_CHAT_ID }}
+          CHAT_ID: ${{ secrets.TELEGRAM_QUOTE_CHAT_ID}}
           RANDOM_SEED: ${{ github.event.inputs.seed || '' }}
           PYTHONUNBUFFERED: "1"
         run: |

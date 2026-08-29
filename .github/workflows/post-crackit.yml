@@ -80,8 +80,8 @@ jobs:
 
               scheduler = TelegramNativeScheduler(bot_token)
 
-              print("📂 Extracting quizzes from GS_Quiz.docx...", flush=True)
-              quizzes = await scheduler.extract_quizzes_from_docx('GS_Quiz.docx')
+              print("📂 Extracting quizzes from quizzes.docx...", flush=True)
+              quizzes = await scheduler.extract_quizzes_from_docx('quizzes.docx')
               if not quizzes:
                   print("❌ No valid quizzes found!", flush=True)
                   sys.exit(1)

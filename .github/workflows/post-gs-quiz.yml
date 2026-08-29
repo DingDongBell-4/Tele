@@ -45,7 +45,6 @@ jobs:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TELEGRAM_GS_CHAT_ID }}
           RANDOM_SEED: ${{ github.event.inputs.seed || '' }}
-        env:
           PYTHONUNBUFFERED: "1"
         run: |
           python -u - << 'PYTHON_EOF'

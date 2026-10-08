@@ -3,7 +3,7 @@
 Telegram Quiz + Quote Scheduler
 Each session (triggered every 2 hours, or via --loop):
   - Posts N random quiz questions as native Telegram quiz polls, 1-minute delay between each
-  - Posts 1 random quote as a plain text message, alongside that same session
+  - Then posts 1 random quote as a plain text message at the end of the session
 
 Install: pip install python-telegram-bot httpx python-docx
 """
@@ -215,8 +215,8 @@ class TelegramNativeScheduler:
         num_questions: int,
         random_seed: Optional[int] = None,
     ):
-        """Post one quote (random) plus N random quiz questions (1-minute
-        delay between each quiz poll) to the given chats.
+        """Post N random quiz questions (1-minute delay between each quiz
+        poll) first, then one random quote last, to the given chats.
         """
 
         if random_seed is not None:
@@ -236,14 +236,6 @@ class TelegramNativeScheduler:
         print("─" * 60)
 
         async with httpx.AsyncClient() as client:
-            # Post the quote first, once per session
-            if selected_quote:
-                print(f"\n💬 Sending quote...")
-                for chat_id in quote_chat_ids:
-                    success = await self.send_message(client, chat_id, selected_quote)
-                    status = "✅ Sent" if success else "❌ Failed"
-                    print(f"  {status} to chat {chat_id}")
-
             for idx, quiz in enumerate(selected_quizzes):
                 print(f"\n[{idx+1}/{len(selected_quizzes)}] Sending Q{quiz['number']}...")
 
@@ -258,6 +250,14 @@ class TelegramNativeScheduler:
                         await asyncio.sleep(10)
                         if remaining > 10:
                             print(f"     {remaining-10}s remaining...")
+
+            # Post the quote last, once per session (after all quizzes)
+            if selected_quote:
+                print(f"\n💬 Sending quote (after all quizzes)...")
+                for chat_id in quote_chat_ids:
+                    success = await self.send_message(client, chat_id, selected_quote)
+                    status = "✅ Sent" if success else "❌ Failed"
+                    print(f"  {status} to chat {chat_id}")
 
         print("\n" + "─" * 60)
         print("✅ SESSION COMPLETE")

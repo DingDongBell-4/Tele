@@ -2,7 +2,7 @@ name: 📮 Post 30 Random Quiz on CrackIT Questions
 
 on:
   schedule:
-    - cron: '37 11,18 * * *'  # Same 2-hour cadence as the original
+    - cron: '37 3,23 * * *'  # Same 2-hour cadence as the original
   push:
     paths:
       - 'quizzes.docx'
